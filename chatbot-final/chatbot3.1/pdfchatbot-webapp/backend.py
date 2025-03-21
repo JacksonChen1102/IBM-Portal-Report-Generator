@@ -471,10 +471,10 @@ def parse_swot_analysis(text):
 
 def generate_swot_visualization(sections):
     """
-    Creates a SWOT quadrant diagram with text wrapping based on word count
+    Creates a SWOT quadrant diagram with improved text density and spacing
     """
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, 9))
+    # Create figure with larger size
+    fig, ax = plt.subplots(figsize=(14, 10))
 
     # Remove borders
     for spine in ax.spines.values():
@@ -505,8 +505,8 @@ def generate_swot_visualization(sections):
     ax.text(-0.95, -0.05, "Opportunities", fontsize=14, fontweight='bold', color='blue')
     ax.text(0.05, -0.05, "Threats", fontsize=14, fontweight='bold', color='purple')
 
-    # Function to add text with manual word wrapping
-    def add_word_wrapped_text(ax, text, x, y, words_per_line=5, fontsize=10, line_spacing=0.07):
+    # Function to add text with improved word wrapping and increased chars per line
+    def add_word_wrapped_text(ax, text, x, y, fontsize=10, line_spacing=0.05):
         if not text or not isinstance(text, str):
             return y
 
@@ -518,36 +518,72 @@ def generate_swot_visualization(sections):
             clean_text = text.strip()
             bullet = "• "
 
-        # Split text into words
-        words = clean_text.split()
-
         # Add bullet only for first line
         ax.text(x, y, bullet, fontsize=fontsize, ha='left', va='top')
 
-        # Process text in chunks of words_per_line
+        # Split text into words
+        words = clean_text.split()
+        
+        # Calculate chars per line - INCREASED to allow more text per line
+        # Using a higher value for more text density
+        chars_per_quadrant = 65  # Increased from previous ~45 chars
+        
+        # Process text to fit within quadrant
+        lines = []
+        current_line = []
+        current_length = 0
+        
+        for word in words:
+            # Add word length plus a space
+            word_length = len(word) + 1
+            
+            if current_length + word_length <= chars_per_quadrant:
+                current_line.append(word)
+                current_length += word_length
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+                current_length = word_length
+        
+        # Add the last line if not empty
+        if current_line:
+            lines.append(" ".join(current_line))
+        
+        # Draw text lines
         current_y = y
         text_x = x + 0.03  # Indent text after bullet
-
-        for i in range(0, len(words), words_per_line):
-            chunk = " ".join(words[i:i + words_per_line])
-            ax.text(text_x, current_y, chunk, fontsize=fontsize, ha='left', va='top')
+        
+        for line in lines:
+            ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top')
             current_y -= line_spacing
+        
+        # Return final y position with extra spacing
+        return current_y - 0.03
 
-        # Return final y position
-        return current_y - 0.05  # Add extra spacing after this bullet point
-
-    # Function to add multiple bullet points
-    def add_bullet_list(items, x, y, words_per_line=5, fontsize=10):
+    # Function to add multiple bullet points with dynamic spacing
+    def add_bullet_list(items, x, y, quadrant_height=0.9, fontsize=10):
         current_y = y
-        for item in items[:3]:  # Limit to 3 items per quadrant
+        
+        for item in items:
             if item and isinstance(item, str):
-                current_y = add_word_wrapped_text(ax, item, x, current_y, words_per_line, fontsize)
+                # Estimate lines based on text length with new chars_per_line
+                approx_lines = max(1, len(item) // 65)  # Adjusted to match new chars_per_line
+                spacing_needed = approx_lines * 0.05 + 0.03
+                
+                # Check if we have enough space
+                if current_y - spacing_needed > (y - quadrant_height):
+                    current_y = add_word_wrapped_text(ax, item, x, current_y, fontsize=fontsize)
+                else:
+                    # Add ellipsis to indicate more content
+                    ax.text(x+0.03, current_y, "...", fontsize=fontsize, ha='left', va='top')
+                    break
 
-    # Add content to each quadrant
-    add_bullet_list(sections["strengths"], -0.95, 0.85, words_per_line=5, fontsize=10)
-    add_bullet_list(sections["weaknesses"], 0.05, 0.85, words_per_line=5, fontsize=10)
-    add_bullet_list(sections["opportunities"], -0.95, -0.15, words_per_line=5, fontsize=10)
-    add_bullet_list(sections["threats"], 0.05, -0.15, words_per_line=5, fontsize=10)
+    # Add content to each quadrant with adjusted parameters for better text density
+    # Using slightly larger font size now that we have better text wrapping
+    add_bullet_list(sections["strengths"], -0.95, 0.85, fontsize=10)
+    add_bullet_list(sections["weaknesses"], 0.05, 0.85, fontsize=10)
+    add_bullet_list(sections["opportunities"], -0.95, -0.15, fontsize=10)
+    add_bullet_list(sections["threats"], 0.05, -0.15, fontsize=10)
 
     return fig, ax
 
@@ -1198,7 +1234,7 @@ async def generate_report(request: AnalysisRequest):
 
         # 增加温度参数，减少随机性，提高格式一致性
         response = ollama.chat(
-            model="llama3.1",
+            model="granite3.2:8b",
             messages=[{"role": "user", "content": final_prompt}],
             options={"temperature": 0.2}  # 使用低温度以提高格式一致性
         )
@@ -1678,7 +1714,7 @@ async def generate_report(request: AnalysisRequest):
             retry_temperature = max(0.1, 0.3 - current_retry * 0.1)  # 逐次降低温度
 
             retry_response = ollama.chat(
-                model="llama3.1",
+                model="granite3.2:8b",
                 messages=[
                     {"role": "user", "content": final_prompt},
                     {"role": "assistant", "content": analysis_text},
