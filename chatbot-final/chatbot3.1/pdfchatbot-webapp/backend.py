@@ -7,6 +7,10 @@ import base64
 import tempfile
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 import numpy as np
 import textwrap
 import re
@@ -22,10 +26,67 @@ from wordcloud import WordCloud, STOPWORDS
 
 # matplotlib for visualization
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 
 app = FastAPI()
+
+# ---------------------------
+# IBM Design System Colors
+# ---------------------------
+IBM_COLORS = {
+    'blue': '#0f62fe',  # IBM Blue
+    'gray': '#8d8d8d',  # IBM Gray
+    'black': '#161616',  # IBM Black
+    'white': '#ffffff',  # IBM White
+    'cyan': '#1192e8',  # IBM Cyan
+    'green': '#42be65',  # IBM Green
+    'purple': '#8a3ffc',  # IBM Purple
+    'magenta': '#ee5396',  # IBM Magenta
+    'red': '#da1e28',  # IBM Red
+    'yellow': '#f1c21b',  # IBM Yellow
+    'blue_20': '#d0e2ff',  # IBM Blue - lighter shade
+    'blue_40': '#a6c8ff',  # IBM Blue - light shade
+    'blue_60': '#78a9ff',  # IBM Blue - medium shade
+    'blue_80': '#4589ff',  # IBM Blue - dark shade
+    'cyan_20': '#bae6ff',  # IBM Cyan - lighter shade
+    'green_20': '#a7f0ba',  # IBM Green - lighter shade
+    'purple_20': '#e8daff',  # IBM Purple - lighter shade
+    'magenta_20': '#ffafd2',  # IBM Magenta - lighter shade
+    'red_20': '#ffd7d9',  # IBM Red - lighter shade
+    'yellow_20': '#fcf4d6',  # IBM Yellow - lighter shade
+    'gray_10': '#f4f4f4',  # IBM Gray - very light
+    'gray_20': '#e0e0e0',  # IBM Gray - lighter
+    'gray_30': '#c6c6c6',  # IBM Gray - light
+    'gray_60': '#6f6f6f',  # IBM Gray - medium
+    'gray_80': '#393939',  # IBM Gray - dark
+}
+
+
+# Set IBM-style matplotlib configuration
+def set_ibm_matplotlib_style():
+    """Configure matplotlib to use IBM fonts, colors and styling"""
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'sans-serif']
+    plt.rcParams['axes.edgecolor'] = IBM_COLORS['gray_30']
+    plt.rcParams['axes.linewidth'] = 0.5
+    plt.rcParams['axes.grid'] = False
+    plt.rcParams['grid.alpha'] = 0.3
+    plt.rcParams['grid.color'] = IBM_COLORS['gray_20']
+    plt.rcParams['grid.linewidth'] = 0.5
+    plt.rcParams['xtick.color'] = IBM_COLORS['gray_80']
+    plt.rcParams['ytick.color'] = IBM_COLORS['gray_80']
+    plt.rcParams['text.color'] = IBM_COLORS['black']
+    plt.rcParams['axes.labelcolor'] = IBM_COLORS['black']
+    plt.rcParams['axes.spines.top'] = False
+    plt.rcParams['axes.spines.right'] = False
+    plt.rcParams['savefig.facecolor'] = IBM_COLORS['white']
+    plt.rcParams['figure.facecolor'] = IBM_COLORS['white']
+    plt.rcParams['figure.figsize'] = (10, 6)
+
+    return plt
 
 # ---------------------------
 # 1. Define the prompt template and data model
@@ -66,7 +127,7 @@ ANALYSIS_TEMPLATES = {
         "Please perform a detailed PESTLE analysis based on the content of the documentation provided, strictly following the format output below:\n\n"
         "## Political\n"
         "- [Political factors 1]\n"
-        "- [Political factors 2\n"
+        "- [Political factors 2]\n"
         "- [Political factors 3]\n\n"
 
         "## Economic\n"
@@ -182,14 +243,16 @@ class VisualizationRequest(BaseModel):
 
 
 # ---------------------------
-# 2. Auxiliary functions
+# 2. Auxiliary functions - WordCloud
 # ---------------------------
 
 def generate_wordcloud_image(text: str):
     """
-    Generate a word cloud from text with enhanced stopwords for financial reports,
-    including months, and converting all words to lowercase manually
+    Generate a word cloud with diverse IBM Design Language styling
     """
+    # Apply IBM style to matplotlib
+    plt = set_ibm_matplotlib_style()
+
     # Base stopwords from NLTK/WordCloud
     stopwords = set(STOPWORDS)
 
@@ -353,78 +416,163 @@ def generate_wordcloud_image(text: str):
     # Convert text to lowercase manually
     text = text.lower()
 
-    # Create the word cloud (without the unsupported lowercase parameter)
-    wc = WordCloud(
-        width=800,
-        height=400,
-        background_color="white",
-        stopwords=stopwords,
-        collocations=False,  # Don't include bigrams like "annual report"
-        max_words=100,  # Limit to 100 most common words
-        min_word_length=3  # Skip very short words
-    ).generate(text)
+    # Create a simple rectangular mask without any masking
+    # This removes the potential issue with not enough valid pixels
+    mask_array = np.ones((500, 900), dtype=np.int32)
+
+    # If text is too short, add some padding to avoid errors
+    if len(text.split()) < 20:
+        text = text + " " + " ".join(["document"] * 20)
+
+    # IBM color function with diverse color palette
+    def ibm_diverse_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
+        """Color function using a diverse mix of IBM colors"""
+        # Define multiple color palettes from IBM color system
+        primary_colors = [
+            IBM_COLORS['blue'],  # IBM Blue
+            IBM_COLORS['purple'],  # IBM Purple
+            IBM_COLORS['cyan'],  # IBM Cyan
+            IBM_COLORS['green'],  # IBM Green
+            IBM_COLORS['magenta']  # IBM Magenta
+        ]
+
+        secondary_colors = [
+            IBM_COLORS['blue_60'],  # Medium Blue
+            IBM_COLORS['purple_20'],  # Light Purple
+            IBM_COLORS['cyan_20'],  # Light Cyan
+            IBM_COLORS['green_20'],  # Light Green
+            IBM_COLORS['magenta_20'],  # Light Magenta
+            IBM_COLORS['red_20'],  # Light Red
+            IBM_COLORS['yellow_20']  # Light Yellow
+        ]
+
+        neutral_colors = [
+            IBM_COLORS['gray_80'],  # Dark Gray
+            IBM_COLORS['gray_60'],  # Medium Gray
+            IBM_COLORS['black']  # IBM Black
+        ]
+
+        # Assign colors based on font size (importance)
+        if font_size > 45:  # Most important words
+            return np.random.choice(primary_colors)
+        elif font_size > 35:
+            return np.random.choice(primary_colors, p=[0.3, 0.2, 0.2, 0.15, 0.15])
+        elif font_size > 25:
+            return np.random.choice(primary_colors + secondary_colors,
+                                    p=[0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05])
+        else:  # Less important words
+            all_colors = primary_colors + secondary_colors + neutral_colors
+            probabilities = [0.08, 0.08, 0.08, 0.08, 0.08,  # primary
+                             0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.07,  # secondary
+                             0.04, 0.04, 0.04]  # neutral
+            return np.random.choice(all_colors, p=probabilities)
+
+    # Create the word cloud with more robust error handling
+    try:
+        wc = WordCloud(
+            width=900,
+            height=500,
+            background_color=IBM_COLORS['white'],
+            color_func=ibm_diverse_color_func,
+            stopwords=stopwords,
+            collocations=False,
+            max_words=100,
+            min_word_length=3,
+            mask=mask_array,
+            prefer_horizontal=0.9,
+            margin=10,
+            random_state=42
+        ).generate(text)
+    except ValueError as e:
+        # Fallback to simpler configuration if the primary one fails
+        print(f"WordCloud generation error: {str(e)}. Trying fallback method...")
+        wc = WordCloud(
+            width=800,
+            height=400,
+            background_color=IBM_COLORS['white'],
+            stopwords=stopwords,
+            max_words=50,
+            min_word_length=3,
+            random_state=42
+        ).generate(text)
+
+    # Create figure with IBM styling
+    fig, ax = plt.subplots(figsize=(12, 6.5), facecolor=IBM_COLORS['white'])
+    ax.imshow(wc, interpolation='bilinear')
+    ax.set_axis_off()
+
+    # Add IBM-styled title
+    plt.suptitle("Document Word Cloud", fontsize=16, color=IBM_COLORS['black'], y=0.98, fontweight='bold')
+
+    # Add subtle branding
+    fig.text(0.02, 0.02, "PDF Analysis AI", fontsize=8, color=IBM_COLORS['gray'])
 
     # Convert to image
     img_buffer = io.BytesIO()
-    wc.to_image().save(img_buffer, format="PNG")
+    plt.savefig(img_buffer, format="PNG", dpi=300, bbox_inches='tight')
     img_buffer.seek(0)
+    plt.close(fig)
+
     return img_buffer
 
 
-# 修改 add_wrapped_text 函数，确保正确处理比较操作
+# ---------------------------
+# 3. Auxiliary functions - Visualization Text Utils and SWOT
+# ---------------------------
+
+# Improved text wrapping function for IBM-styled visualizations
 def add_wrapped_text(ax, text, x, y, width, fontsize=10, max_lines=5):
-    """更改后的函数，更好地处理文本换行和显示"""
-    # 确保文本不为None
+    """Improved text wrapping function with IBM styling"""
+    # Ensure text is not None
     if text is None or text == "":
         text = "(No data)"
 
-    # 确保参数是浮点数
-    x = float(x)
-    y = float(y)
-    width = float(width)
-    fontsize = float(fontsize)
+    # Ensure parameters are float values
+    x, y = float(x), float(y)
+    width, fontsize = float(width), float(fontsize)
 
-    # 标准化文本开头，保留项目符号
+    # Standardize text beginning, preserving bullet points
     if text.startswith('-') or text.startswith('•'):
         text = text.strip()
     else:
         text = '• ' + text.strip()
 
-    # 调整包装宽度，使其更合理
-    # 对于短文本增加宽度以容纳更多字符
-    wrap_width = int(70 * width)  # 这是一个经验值，可能需要调整
+    # Adjust wrap width for IBM's cleaner text presentation
+    wrap_width = int(70 * width)
 
-    # 使用textwrap包装文本
+    # Use textwrap to wrap text
     wrapped_lines = textwrap.wrap(text, width=wrap_width)
 
-    # 检查空行情况
+    # Check for empty lines case
     if not wrapped_lines:
         wrapped_lines = ["(No content)"]
 
-    # 限制行数并添加省略号
+    # Limit number of lines and add ellipsis if needed
     if len(wrapped_lines) > max_lines:
         wrapped_lines = wrapped_lines[:max_lines - 1]
         wrapped_lines.append("...")
 
-    # 绘制每一行文本
+    # Draw each line of text with IBM styling
     for i, line in enumerate(wrapped_lines):
         ax.text(x, y - i * (fontsize * 0.2), line, fontsize=fontsize,
                 horizontalalignment='left', verticalalignment='top',
-                wrap=True)
+                wrap=True, color=IBM_COLORS['black'],
+                fontfamily='sans-serif')
 
-    # 返回下一行的y位置，增加额外间距
-    return y - len(wrapped_lines) * (fontsize * 0.2) - 0.1  # 增加额外间距
+    # Return next vertical position with appropriate spacing
+    return y - len(wrapped_lines) * (fontsize * 0.2) - 0.1
 
 
 def parse_swot_analysis(text):
-    # 防止None值
+    """Parse SWOT analysis text into structured sections"""
+    # Handle None values
     if text is None:
         text = ""
 
     sections = {"strengths": [], "weaknesses": [], "opportunities": [], "threats": []}
     current_section = None
 
-    # 将文本分割为行
+    # Split text into lines
     lines = text.split('\n')
 
     for line in lines:
@@ -432,38 +580,38 @@ def parse_swot_analysis(text):
         if not line:
             continue
 
-        # 检查部分标题
+        # Check section titles
         lower_line = line.lower()
         if '##' in line or '#' in line:
-            if ('优势' in lower_line) or ('strength' in lower_line):
+            if ('strengths' in lower_line) or ('strength' in lower_line):
                 current_section = 'strengths'
                 continue
-            elif ('劣势' in lower_line) or ('weakness' in lower_line):
+            elif ('weaknesses' in lower_line) or ('weakness' in lower_line):
                 current_section = 'weaknesses'
                 continue
-            elif ('机会' in lower_line) or ('opportunit' in lower_line):
+            elif ('opportunities' in lower_line) or ('opportunit' in lower_line):
                 current_section = 'opportunities'
                 continue
-            elif ('威胁' in lower_line) or ('threat' in lower_line):
+            elif ('threats' in lower_line) or ('threat' in lower_line):
                 current_section = 'threats'
                 continue
 
-        # 如果我们在某个部分中且该行以项目符号开始，则添加它
+        # If we're in a section and line starts with bullet, add it
         if current_section and (line.startswith('-') or line.startswith('•')):
             sections[current_section].append(line)
-        # 如果我们在某个部分中但没有项目符号，尝试从内容中识别部分
+        # If in a section but no bullet, try to identify from content
         elif current_section:
-            # 非项目符号但在当前部分中，作为普通文本添加
+            # Non-bullet line but in current section, add as plain text
             if not ('##' in line or '#' in line):
                 sections[current_section].append('• ' + line)
-        # 尝试从没有明确标记的文本中识别部分
-        elif ('优势' in lower_line) or ('strength' in lower_line):
+        # Try to identify sections from text without explicit markers
+        elif ('strengths' in lower_line) or ('strength' in lower_line):
             sections['strengths'].append('• ' + line)
-        elif ('劣势' in lower_line) or ('weakness' in lower_line):
+        elif ('weaknesses' in lower_line) or ('weakness' in lower_line):
             sections['weaknesses'].append('• ' + line)
-        elif ('机会' in lower_line) or ('opportunit' in lower_line):
+        elif ('opportunities' in lower_line) or ('opportunit' in lower_line):
             sections['opportunities'].append('• ' + line)
-        elif ('威胁' in lower_line) or ('threat' in lower_line):
+        elif ('threats' in lower_line) or ('threat' in lower_line):
             sections['threats'].append('• ' + line)
 
     return sections
@@ -471,18 +619,21 @@ def parse_swot_analysis(text):
 
 def generate_swot_visualization(sections):
     """
-    Creates a SWOT quadrant diagram with improved text density and spacing
+    Creates a SWOT quadrant diagram with IBM design aesthetic
     """
-    # Create figure with larger size
-    fig, ax = plt.subplots(figsize=(14, 10))
+    # Apply IBM style
+    plt = set_ibm_matplotlib_style()
 
-    # Remove borders
+    # Create figure with IBM styling
+    fig, ax = plt.subplots(figsize=(12, 10), facecolor=IBM_COLORS['white'])
+
+    # Remove borders for clean IBM look
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    # Draw cross
-    ax.axvline(x=0, color='black', linewidth=1.5)
-    ax.axhline(y=0, color='black', linewidth=1.5)
+    # Draw cross with IBM styling
+    ax.axvline(x=0, color=IBM_COLORS['gray_30'], linewidth=1.5, alpha=0.8)
+    ax.axhline(y=0, color=IBM_COLORS['gray_30'], linewidth=1.5, alpha=0.8)
 
     # Configure axes
     ax.set_xlim(-1, 1)
@@ -490,27 +641,27 @@ def generate_swot_visualization(sections):
     ax.set_xticks([])
     ax.set_yticks([])
 
-    # Add title
-    ax.set_title("SWOT Analysis Quadrant Diagram", fontsize=16, fontweight='bold', pad=20)
+    # Add title with IBM styling
+    ax.set_title("SWOT Analysis", fontsize=18, color=IBM_COLORS['black'], pad=20, fontweight='bold')
 
-    # Add background colors to quadrants
-    ax.add_patch(plt.Rectangle((-1, 0), 1, 1, fill=True, color='#e6ffe6', alpha=0.3))  # Strengths
-    ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, color='#ffe6e6', alpha=0.3))  # Weaknesses
-    ax.add_patch(plt.Rectangle((-1, -1), 1, 1, fill=True, color='#e6e6ff', alpha=0.3))  # Opportunities
-    ax.add_patch(plt.Rectangle((0, -1), 1, 1, fill=True, color='#f9e6ff', alpha=0.3))  # Threats
+    # Add background colors to quadrants using IBM color palette
+    ax.add_patch(plt.Rectangle((-1, 0), 1, 1, fill=True, color=IBM_COLORS['green_20'], alpha=0.7))  # Strengths
+    ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, color=IBM_COLORS['red_20'], alpha=0.7))  # Weaknesses
+    ax.add_patch(plt.Rectangle((-1, -1), 1, 1, fill=True, color=IBM_COLORS['blue_20'], alpha=0.7))  # Opportunities
+    ax.add_patch(plt.Rectangle((0, -1), 1, 1, fill=True, color=IBM_COLORS['purple_20'], alpha=0.7))  # Threats
 
-    # Add quadrant titles
-    ax.text(-0.95, 0.95, "Strengths", fontsize=14, fontweight='bold', color='green')
-    ax.text(0.05, 0.95, "Weaknesses", fontsize=14, fontweight='bold', color='red')
-    ax.text(-0.95, -0.05, "Opportunities", fontsize=14, fontweight='bold', color='blue')
-    ax.text(0.05, -0.05, "Threats", fontsize=14, fontweight='bold', color='purple')
+    # Add quadrant titles with IBM styling
+    ax.text(-0.95, 0.95, "Strengths", fontsize=14, fontweight='bold', color=IBM_COLORS['green'])
+    ax.text(0.05, 0.95, "Weaknesses", fontsize=14, fontweight='bold', color=IBM_COLORS['red'])
+    ax.text(-0.95, -0.05, "Opportunities", fontsize=14, fontweight='bold', color=IBM_COLORS['blue'])
+    ax.text(0.05, -0.05, "Threats", fontsize=14, fontweight='bold', color=IBM_COLORS['purple'])
 
-    # Function to add text with improved word wrapping and increased chars per line
+    # Function to add word-wrapped text with IBM styling
     def add_word_wrapped_text(ax, text, x, y, fontsize=10, line_spacing=0.05):
         if not text or not isinstance(text, str):
             return y
 
-        # Clean up text
+        # Clean text and determine bullet style
         if text.startswith('-') or text.startswith('•'):
             clean_text = text[1:].strip()
             bullet = "• "
@@ -519,77 +670,84 @@ def generate_swot_visualization(sections):
             bullet = "• "
 
         # Add bullet only for first line
-        ax.text(x, y, bullet, fontsize=fontsize, ha='left', va='top')
+        ax.text(x, y, bullet, fontsize=fontsize, ha='left', va='top', color=IBM_COLORS['black'])
 
-        # Split text into words
+        # Process text to fit properly
         words = clean_text.split()
-        
-        # Calculate chars per line - INCREASED to allow more text per line
-        # Using a higher value for more text density
-        chars_per_quadrant = 65  # Increased from previous ~45 chars
-        
-        # Process text to fit within quadrant
+        # Increased chars per line for better text density but still readable
+        chars_per_line = 65
+
+        # Build lines
         lines = []
         current_line = []
         current_length = 0
-        
+
         for word in words:
-            # Add word length plus a space
-            word_length = len(word) + 1
-            
-            if current_length + word_length <= chars_per_quadrant:
+            word_length = len(word) + 1  # Word plus space
+            if current_length + word_length <= chars_per_line:
                 current_line.append(word)
                 current_length += word_length
             else:
                 lines.append(" ".join(current_line))
                 current_line = [word]
                 current_length = word_length
-        
-        # Add the last line if not empty
+
+        # Add final line if not empty
         if current_line:
             lines.append(" ".join(current_line))
-        
-        # Draw text lines
-        current_y = y
+
+        # Draw each line
         text_x = x + 0.03  # Indent text after bullet
-        
+        current_y = y
+
         for line in lines:
-            ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top')
+            ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top',
+                    color=IBM_COLORS['black'])
             current_y -= line_spacing
-        
-        # Return final y position with extra spacing
+
+        # Return final position with extra spacing
         return current_y - 0.03
 
-    # Function to add multiple bullet points with dynamic spacing
+    # Function to add multiple bullet points with dynamic spacing and IBM styling
     def add_bullet_list(items, x, y, quadrant_height=0.9, fontsize=10):
         current_y = y
-        
+
         for item in items:
             if item and isinstance(item, str):
-                # Estimate lines based on text length with new chars_per_line
-                approx_lines = max(1, len(item) // 65)  # Adjusted to match new chars_per_line
+                # Estimate lines needed based on text length
+                approx_lines = max(1, len(item) // 65)
                 spacing_needed = approx_lines * 0.05 + 0.03
-                
+
                 # Check if we have enough space
                 if current_y - spacing_needed > (y - quadrant_height):
                     current_y = add_word_wrapped_text(ax, item, x, current_y, fontsize=fontsize)
                 else:
                     # Add ellipsis to indicate more content
-                    ax.text(x+0.03, current_y, "...", fontsize=fontsize, ha='left', va='top')
+                    ax.text(x + 0.03, current_y, "...", fontsize=fontsize, ha='left', va='top',
+                            color=IBM_COLORS['black'])
                     break
 
-    # Add content to each quadrant with adjusted parameters for better text density
-    # Using slightly larger font size now that we have better text wrapping
+    # Add content to each quadrant with IBM styling
     add_bullet_list(sections["strengths"], -0.95, 0.85, fontsize=10)
     add_bullet_list(sections["weaknesses"], 0.05, 0.85, fontsize=10)
     add_bullet_list(sections["opportunities"], -0.95, -0.15, fontsize=10)
     add_bullet_list(sections["threats"], 0.05, -0.15, fontsize=10)
 
+    # Add subtle IBM branding
+    fig.text(0.01, 0.01, "PDF Analysis AI", fontsize=8, color=IBM_COLORS['gray'])
+
     return fig, ax
 
+
+# ---------------------------
+# 4. Auxiliary functions - PESTLE Analysis
+# ---------------------------
+
 def parse_pestle_analysis(text):
+    """Parse PESTLE analysis text into structured sections"""
     if text is None:
         text = ""
+
     sections = {
         "political": [],
         "economic": [],
@@ -600,7 +758,7 @@ def parse_pestle_analysis(text):
     }
     current_section = None
 
-    # 分割文本为行
+    # Split text into lines
     lines = text.split('\n')
 
     for line in lines:
@@ -608,10 +766,10 @@ def parse_pestle_analysis(text):
         if not line:
             continue
 
-        # 检查部分标题
+        # Check section headers
         lower_line = line.lower()
 
-        # 识别各个部分
+        # Identify sections
         if '##' in line or '#' in line:
             if any(x in lower_line for x in ["politic", "政治"]):
                 current_section = "political"
@@ -632,7 +790,7 @@ def parse_pestle_analysis(text):
                 current_section = "environmental"
                 continue
         else:
-            # 如果行中包含关键词，也可以识别部分
+            # Try to identify sections from content
             if current_section is None:
                 if any(x in lower_line for x in ["politic", "政治"]):
                     current_section = "political"
@@ -653,16 +811,16 @@ def parse_pestle_analysis(text):
                     current_section = "environmental"
                     continue
 
-        # 收集当前部分的内容
+        # Collect content for current section
         if current_section and line:
-            # 如果是列表项，保留原样；否则添加项目符号
+            # If it's a list item, keep original format
             if line.startswith('-') or line.startswith('•'):
                 sections[current_section].append(line)
             elif line[0].isdigit() and line[1] in ['.', ')', ' ']:
-                # 将数字编号格式转换为短横线格式
+                # Convert numbered format to dash format
                 sections[current_section].append('- ' + line[2:].strip())
             elif not ('##' in line or '#' in line):
-                # 不是标题行的普通文本也加入
+                # Non-title text also added
                 sections[current_section].append('• ' + line)
 
     return sections
@@ -670,36 +828,44 @@ def parse_pestle_analysis(text):
 
 def generate_pestle_visualization(sections):
     """
-    Creates a PESTLE analysis visualization with improved text wrapping,
-    correct top-to-bottom order, and significantly increased line spacing
-    to prevent any text overlap
+    Creates a PESTLE analysis visualization with IBM design language styling
     """
-    # Set up constants
-    words_per_line = 12  # 12 words per line as requested
-    line_spacing = 0.2  # Significantly increased from 0.1 to 0.2 for better line separation
-    item_spacing = 0.3  # Significantly increased from 0.15 to 0.3 for better bullet point separation
+    # Apply IBM style
+    plt = set_ibm_matplotlib_style()
 
-    # Define PESTLE components in correct top-to-bottom order and their colors
+    # Set consistent constants for IBM styling
+    title_color = IBM_COLORS['black']
+    primary_color = IBM_COLORS['blue']
+    secondary_color = IBM_COLORS['blue_60']
+    content_color = IBM_COLORS['black']
+
+    # PESTLE component definitions
     pestle_data = [
-        {"letter": "P", "name": "Political", "color": "#4a6fe3",
+        {"letter": "P", "name": "Political", "color": IBM_COLORS['blue'],
          "insights": sections["political"][:3] if sections["political"] else ["No political factors provided"]},
-        {"letter": "E", "name": "Economic", "color": "#e74c3c",
+        {"letter": "E", "name": "Economic", "color": IBM_COLORS['cyan'],
          "insights": sections["economic"][:3] if sections["economic"] else ["No economic factors provided"]},
-        {"letter": "S", "name": "Social", "color": "#f39c12",
+        {"letter": "S", "name": "Social", "color": IBM_COLORS['green'],
          "insights": sections["social"][:3] if sections["social"] else ["No social factors provided"]},
-        {"letter": "T", "name": "Technological", "color": "#e2cb92",
-         "insights": sections["technological"][:3] if sections["technological"] else ["No technological factors provided"]},
-        {"letter": "L", "name": "Legal", "color": "#8ecfd5",
+        {"letter": "T", "name": "Technological", "color": IBM_COLORS['purple'],
+         "insights": sections["technological"][:3] if sections["technological"] else [
+             "No technological factors provided"]},
+        {"letter": "L", "name": "Legal", "color": IBM_COLORS['red'],
          "insights": sections["legal"][:3] if sections["legal"] else ["No legal factors provided"]},
-        {"letter": "E", "name": "Environmental", "color": "#aed581",
-         "insights": sections["environmental"][:3] if sections["environmental"] else ["No environmental factors provided"]}
+        {"letter": "E", "name": "Environmental", "color": IBM_COLORS['green'],
+         "insights": sections["environmental"][:3] if sections["environmental"] else [
+             "No environmental factors provided"]}
     ]
 
-    # Reverse the order for top-to-bottom display
+    # Reverse order for top-to-bottom display (IBM style guides often prefer this)
     pestle_data.reverse()
 
-    # Pre-calculate row heights with much more space
+    # Calculate row heights with more space
     row_heights = []
+    words_per_line = 12  # Number of words per line
+    line_spacing = 0.2  # Space between lines
+    item_spacing = 0.3  # Space between items
+
     for item in pestle_data:
         # Calculate height needed for this row with extra spacing
         row_height = 0
@@ -718,16 +884,16 @@ def generate_pestle_visualization(sections):
         row_height = max(2.0, row_height + 0.5)  # Significantly increased minimum height and padding
         row_heights.append(row_height)
 
-    # Calculate total height needed
+    # Calculate total height
     total_height = sum(row_heights)
 
-    # Create figure with calculated dimensions and increased height
-    fig, ax = plt.subplots(figsize=(14, total_height * 1.5))  # Further increased height multiplier
+    # Create figure with IBM styling
+    fig, ax = plt.subplots(figsize=(14, total_height * 1.2), facecolor=IBM_COLORS['white'])
 
-    # Turn off axes
+    # Turn off axes for clean IBM look
     ax.axis('off')
 
-    # Function to wrap and display text with significantly increased line spacing
+    # Function to wrap and display text with IBM styling
     def add_word_limited_text(text, x_start, y_start, fontsize=10):
         if not text or not isinstance(text, str):
             return y_start
@@ -738,24 +904,26 @@ def generate_pestle_visualization(sections):
         else:
             clean_text = text.strip()
 
-        # Add bullet point
-        ax.text(x_start, y_start, "•", fontsize=fontsize, ha='left', va='top')
+        # Add bullet point with IBM styling
+        ax.text(x_start, y_start, "•", fontsize=fontsize, ha='left', va='top',
+                color=content_color, fontweight='normal')
 
-        # Split into words and group into lines with more spacing
+        # Split into words and group into lines with IBM spacing
         words = clean_text.split()
-        text_x = x_start + 0.08  # Further increased indent after bullet
+        text_x = x_start + 0.08  # IBM style often uses slightly larger indents
         current_y = y_start
 
         for i in range(0, len(words), words_per_line):
             line_words = words[i:i + words_per_line]
             line = " ".join(line_words)
-            ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top')
-            current_y -= line_spacing  # Using the increased line spacing
+            ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top',
+                    color=content_color, fontweight='normal')
+            current_y -= line_spacing
 
         # Return the new y position with extra space for the next item
         return current_y - item_spacing
 
-    # Create PESTLE grid with dynamic heights and more spacing
+    # Create PESTLE grid with IBM styling
     current_y = 0  # Start from the top
 
     for i, (item, row_height) in enumerate(zip(pestle_data, row_heights)):
@@ -763,21 +931,24 @@ def generate_pestle_visualization(sections):
         row_top = current_y + row_height
         row_bottom = current_y
 
-        # Letter box (left column)
-        ax.add_patch(plt.Rectangle((0, row_bottom), 1, row_height, fill=True, color=item["color"]))
-        ax.text(0.5, row_bottom + row_height / 2, item["letter"], ha='center', va='center', color='white',
-                fontsize=36, fontweight='bold')
+        # Letter box (left column) - IBM styling with clean, sharp rectangles
+        ax.add_patch(plt.Rectangle((0, row_bottom), 1, row_height, fill=True, color=item["color"],
+                                   ec=None, lw=0))
+        ax.text(0.5, row_bottom + row_height / 2, item["letter"], ha='center', va='center',
+                color=IBM_COLORS['white'], fontsize=36, fontweight='bold')
 
-        # Name box (second column)
-        ax.add_patch(plt.Rectangle((1, row_bottom), 2, row_height, fill=True, color=item["color"], alpha=0.7))
-        ax.text(2, row_bottom + row_height / 2, item["name"], ha='center', va='center', color='white',
-                fontsize=16, fontweight='bold')
+        # Name box (second column) - IBM styling with slightly lighter shade
+        color_with_alpha = item["color"]  # IBM often uses solid colors rather than alpha
+        ax.add_patch(plt.Rectangle((1, row_bottom), 2, row_height, fill=True, color=color_with_alpha,
+                                   alpha=0.7, ec=None, lw=0))
+        ax.text(2, row_bottom + row_height / 2, item["name"], ha='center', va='center',
+                color=IBM_COLORS['white'], fontsize=16, fontweight='bold')
 
-        # Content box (right column)
-        ax.add_patch(plt.Rectangle((3, row_bottom), 7, row_height, fill=True, color=item["color"], alpha=0.3))
+        # Content box (right column) - IBM styling with even lighter shade
+        ax.add_patch(plt.Rectangle((3, row_bottom), 7, row_height, fill=True, color=color_with_alpha,
+                                   alpha=0.2, ec=None, lw=0))
 
-        # Add insights with much more space between lines
-        # Start with more space from the top
+        # Add insights with IBM styling and spacing
         content_y = row_bottom + row_height - 0.3
 
         for insight in item["insights"][:3]:
@@ -791,23 +962,24 @@ def generate_pestle_visualization(sections):
     ax.set_xlim(0, 10)
     ax.set_ylim(0, total_height)
 
-    # Set title
-    ax.set_title("PESTLE Analysis", fontsize=16, fontweight='bold', pad=20)
+    # Add title with IBM styling
+    ax.set_title("PESTLE Analysis", fontsize=18, fontweight='bold', color=title_color, pad=20)
+
+    # Add subtle IBM branding
+    fig.text(0.01, 0.01, "PDF Analysis AI", fontsize=8, color=IBM_COLORS['gray'])
 
     return fig, ax
 
 
+# ---------------------------
+# 5. Auxiliary functions - MOST Analysis
+# ---------------------------
+
 def parse_most_analysis(text):
     """
-    From text parsing MOST analysis of the respective parts
-
-    Parameters:
-    text - MOST analysis text
-
-    Return:
-    Dictionary containing Mission, Objectives, Strategies, Tactics sections content
+    Parse MOST analysis text into structured sections
     """
-    # Prevent None value
+    # Prevent None values
     if text is None:
         text = ""
 
@@ -827,10 +999,10 @@ def parse_most_analysis(text):
         if not line:
             continue
 
-        # Check section titles
+        # Check section headers
         lower_line = line.lower()
 
-        # Identify each section's start
+        # Identify each section start
         if '##' in line or '#' in line:
             if any(x in lower_line for x in ["mission", "使命", "任务"]):
                 current_section = "mission"
@@ -877,16 +1049,15 @@ def parse_most_analysis(text):
 
 def generate_most_visualization(sections):
     """
-    Creates a MOST analysis visualization with correct pyramid shape:
-    - Mission at the top (small tip)
-    - Tactics at the bottom (wide base)
-    - Fixed absolute positioning of text sections
-    - Wider, more visually appealing pyramid
+    Creates a MOST analysis visualization with IBM design language styling
     """
-    # Set up constants for text formatting
-    words_per_line = 10  # Limit words per line for better readability
-    line_spacing = 0.3  # Spacing between lines of the same bullet point
-    item_spacing = 0.6  # Spacing between different bullet points
+    # Apply IBM style
+    plt = set_ibm_matplotlib_style()
+
+    # Words per line for better readability with IBM styling
+    words_per_line = 10
+    line_spacing = 0.25  # Slightly increased for IBM's clean spacing
+    item_spacing = 0.5  # More spacing between items
 
     # Get content for each section
     mission_items = sections["mission"][:2] if sections["mission"] else ["No mission information provided"]
@@ -894,18 +1065,15 @@ def generate_most_visualization(sections):
     strategies_items = sections["strategies"][:3] if sections["strategies"] else ["No strategy information provided"]
     tactics_items = sections["tactics"][:4] if sections["tactics"] else ["No tactic information provided"]
 
-    # Set up pyramid dimensions
-    pyramid_width = 10  # Wider pyramid
-    pyramid_height = 12  # Fixed height
+    # Set up pyramid dimensions for IBM styling
+    pyramid_width = 10
+    pyramid_height = 12
 
-    # Create figure with fixed dimensions
-    fig, ax = plt.subplots(figsize=(18, 18))  # Large figure size for better spacing
-
-    # Turn off axis
+    # Create figure with IBM styling
+    fig, ax = plt.subplots(figsize=(16, 14), facecolor=IBM_COLORS['white'])
     ax.axis('off')
 
-    # Define coordinates for a proper pyramid shape
-    # The tip (Mission) is at the top, base (Tactics) at the bottom
+    # Define coordinates for pyramid
     pyramid_tip_x = pyramid_width / 2
     pyramid_tip_y = pyramid_height
     pyramid_base_left_x = 0
@@ -923,35 +1091,34 @@ def generate_most_visualization(sections):
     divider_points = []
     for height in divider_heights:
         # Calculate width at this height (narrower as we go up)
-        # For a proper pyramid: width = baseWidth * (1 - height/totalHeight)
         width_at_height = pyramid_width * (1 - height / pyramid_height)
         left_x = (pyramid_width - width_at_height) / 2
         right_x = left_x + width_at_height
         divider_points.append([(left_x, height), (right_x, height)])
 
-    # Define colors for each section
+    # Define IBM colors for each section
     colors = [
-        "#2c6b97",  # Mission (top) - dark blue
-        "#e77c4d",  # Objectives - orange
-        "#337544",  # Strategies - green
-        "#38a9d4"   # Tactics (bottom) - light blue
+        IBM_COLORS['blue'],  # Mission (top) - IBM blue
+        IBM_COLORS['purple'],  # Objectives - IBM purple
+        IBM_COLORS['cyan'],  # Strategies - IBM cyan
+        IBM_COLORS['green']  # Tactics (bottom) - IBM green
     ]
 
-    # Create polygon patches for each section
+    # Create polygon patches for each section with IBM styling
     # Mission section (top tip)
     mission_polygon = plt.Polygon([
         (pyramid_tip_x, pyramid_tip_y),  # Tip
-        divider_points[2][0], divider_points[2][1]  # Third divider left
-    ], color=colors[0])
+        divider_points[2][0], divider_points[2][1]  # Third divider
+    ], color=colors[0], alpha=0.8)
     ax.add_patch(mission_polygon)
 
     # Objectives section
     objectives_polygon = plt.Polygon([
-        divider_points[2][0], divider_points[2][1],  # Third divider left
+        divider_points[2][0], divider_points[2][1],  # Third divider
         divider_points[2][1],  # Third divider right
         divider_points[1][1],  # Second divider right
-        divider_points[1][0]   # Second divider left
-    ], color=colors[1])
+        divider_points[1][0]  # Second divider left
+    ], color=colors[1], alpha=0.8)
     ax.add_patch(objectives_polygon)
 
     # Strategies section
@@ -959,8 +1126,8 @@ def generate_most_visualization(sections):
         divider_points[1][0], divider_points[1][1],  # Second divider
         divider_points[1][1],  # Second divider right
         divider_points[0][1],  # First divider right
-        divider_points[0][0]   # First divider left
-    ], color=colors[2])
+        divider_points[0][0]  # First divider left
+    ], color=colors[2], alpha=0.8)
     ax.add_patch(strategies_polygon)
 
     # Tactics section (bottom base)
@@ -968,29 +1135,36 @@ def generate_most_visualization(sections):
         divider_points[0][0], divider_points[0][1],  # First divider
         divider_points[0][1],  # First divider right
         (pyramid_base_right_x, pyramid_base_y),  # Bottom right
-        (pyramid_base_left_x, pyramid_base_y)    # Bottom left
-    ], color=colors[3])
+        (pyramid_base_left_x, pyramid_base_y)  # Bottom left
+    ], color=colors[3], alpha=0.8)
     ax.add_patch(tactics_polygon)
 
-    # Add section numbers in correct order
-    ax.text(pyramid_width / 2, (divider_heights[2] + pyramid_height) / 2, "01", ha='center', va='center',
-            color='white', fontsize=20, fontweight='bold')  # Mission - top
-    ax.text(pyramid_width / 2, (divider_heights[1] + divider_heights[2]) / 2, "02", ha='center', va='center',
-            color='white', fontsize=20, fontweight='bold')  # Objectives
-    ax.text(pyramid_width / 2, (divider_heights[0] + divider_heights[1]) / 2, "03", ha='center', va='center',
-            color='white', fontsize=20, fontweight='bold')  # Strategies
-    ax.text(pyramid_width / 2, divider_heights[0] / 2, "04", ha='center', va='center',
-            color='white', fontsize=20, fontweight='bold')  # Tactics - bottom
+    # Add section numbers with IBM styling (white circular badges)
+    # IBM often uses clean numbered badges for sequential processes
+    for i, y_pos in enumerate([
+        (divider_heights[2] + pyramid_height) / 2,  # Mission position
+        (divider_heights[1] + divider_heights[2]) / 2,  # Objectives position
+        (divider_heights[0] + divider_heights[1]) / 2,  # Strategies position
+        divider_heights[0] / 2  # Tactics position
+    ]):
+        # Draw white circular badge with IBM styling
+        circle = plt.Circle((pyramid_width / 2, y_pos), 0.4,
+                            color='white', ec=colors[i], lw=2, zorder=10)
+        ax.add_patch(circle)
+        # Add number with IBM styling
+        ax.text(pyramid_width / 2, y_pos, f"{i + 1:02d}", ha='center', va='center',
+                color=colors[i], fontsize=16, fontweight='bold', zorder=11)
 
-    # Function to process and display a section with bullet points
+    # Function to process and display a section with IBM styled bullet points
     def add_section_with_items(title, items, y_position, content_x, fontsize=11):
-        # Add section title
-        ax.text(content_x, y_position, title, fontsize=16, fontweight='bold')
+        # Add section title with IBM styling
+        ax.text(content_x, y_position, title, fontsize=16, fontweight='bold',
+                color=IBM_COLORS['black'])
 
         # Start content below title with good spacing
-        content_y = y_position - 1.0
+        content_y = y_position - 0.8
 
-        # Add each bullet point
+        # Add each bullet point with IBM styling
         for item in items:
             if not item or not isinstance(item, str):
                 continue
@@ -1001,53 +1175,55 @@ def generate_most_visualization(sections):
             else:
                 clean_text = item.strip()
 
-            # Add bullet point
-            ax.text(content_x, content_y, "•", fontsize=fontsize, ha='left', va='top')
+            # Add bullet point with IBM styling
+            ax.text(content_x, content_y, "•", fontsize=fontsize, ha='left', va='top',
+                    color=IBM_COLORS['black'])
 
-            # Split into words and group into lines
+            # Split into words and group into lines with IBM spacing
             words = clean_text.split()
-            text_x = content_x + 0.5  # Indent after bullet
+            text_x = content_x + 0.4  # Indent after bullet - IBM prefers clean indentation
             current_y = content_y
 
-            # Process each line of this bullet point
+            # Process each line of this bullet point with IBM spacing
             for i in range(0, len(words), words_per_line):
                 line_words = words[i:i + words_per_line]
                 line = " ".join(line_words)
-                ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top')
+                ax.text(text_x, current_y, line, fontsize=fontsize, ha='left', va='top',
+                        color=IBM_COLORS['black'])
                 current_y -= line_spacing
 
             # Move to next bullet point with increased spacing
             content_y = current_y - item_spacing
 
-    # Content positioning to the right of pyramid
+    # Content positioning in IBM style
     content_x = pyramid_width + 1.5
 
-    # Positions for sections - with absolute positioning and large gaps
-    # CORRECT ORDER to match the pyramid: Mission at top, Tactics at bottom
+    # Add sections with IBM styling and positioning
     add_section_with_items("Mission", mission_items, pyramid_height + 0.5, content_x)
-    add_section_with_items("Objectives", objectives_items, pyramid_height - 4.0, content_x)
-    add_section_with_items("Strategies", strategies_items, pyramid_height - 8.5, content_x)
-    add_section_with_items("Tactics", tactics_items, pyramid_height - 13.0, content_x)
+    add_section_with_items("Objectives", objectives_items, pyramid_height - 3.5, content_x)
+    add_section_with_items("Strategies", strategies_items, pyramid_height - 7.5, content_x)
+    add_section_with_items("Tactics", tactics_items, pyramid_height - 11.5, content_x)
 
     # Set chart dimensions
     ax.set_xlim(-1, pyramid_width + 15)
     ax.set_ylim(-2, pyramid_height + 3)
 
-    # Set title
-    ax.set_title("MOST Analysis", fontsize=16, fontweight='bold', pad=20)
+    # Set title with IBM styling
+    ax.set_title("MOST Analysis", fontsize=18, fontweight='bold', color=IBM_COLORS['black'], pad=20)
+
+    # Add subtle IBM branding
+    fig.text(0.01, 0.01, "PDF Analysis AI", fontsize=8, color=IBM_COLORS['gray'])
 
     return fig, ax
 
+
+# ---------------------------
+# 6. Auxiliary functions - Sentiment Analysis
+# ---------------------------
+
 def parse_sentiment_analysis(text):
     """
-    Extract sentiment score value from sentiment analysis text, handling cases where
-    multiple scores might be present.
-
-    Parameters:
-    text - sentiment analysis text
-
-    Returns:
-    sentiment score value (-1 to 1 float)
+    Extract sentiment score value from sentiment analysis text with IBM-styled formatting
     """
     # Prevent None value
     if text is None:
@@ -1106,75 +1282,139 @@ def parse_sentiment_analysis(text):
 
 def generate_sentiment_visualization(score):
     """
-    Creates an improved sentiment analysis visualization that accurately
-    displays the sentiment score with a better design
+    Creates an improved sentiment analysis visualization with IBM design language styling
     """
-    # Create a horizontal gauge figure
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # Apply IBM style
+    plt = set_ibm_matplotlib_style()
 
-    # Turn off axis
+    # Create a clean IBM-styled figure
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor=IBM_COLORS['white'])
+
+    # Turn off axis for clean IBM look
     ax.axis('off')
 
-    # Set up gauge regions
-    gauge_height = 1.0
-    gauge_width = 3.0
-
-    # Create three regions: negative, neutral, positive
-    neg_rect = plt.Rectangle((-1.5, -0.5), 1.0, gauge_height, color='#ffcccc', alpha=0.5)
-    neu_rect = plt.Rectangle((-0.5, -0.5), 1.0, gauge_height, color='#e6e6e6', alpha=0.5)
-    pos_rect = plt.Rectangle((0.5, -0.5), 1.0, gauge_height, color='#ccffcc', alpha=0.5)
-
-    # Add rectangles to chart
-    ax.add_patch(neg_rect)
-    ax.add_patch(neu_rect)
-    ax.add_patch(pos_rect)
-
-    # Add labels for each region
-    ax.text(-1.0, -0.2, "Negative", ha='center', va='center', fontsize=16, color='#d9534f')
-    ax.text(0.0, -0.2, "Neutral", ha='center', va='center', fontsize=16, color='#777777')
-    ax.text(1.0, -0.2, "Positive", ha='center', va='center', fontsize=16, color='#5cb85c')
-
-    # Clamp score between -1 and 1
+    # Ensure score is within bounds
     clamped_score = max(-1, min(1, score))
 
-    # Draw arrow pointer at the score position
-    arrow_y = 0
-    ax.arrow(0, arrow_y, clamped_score, 0,
-             head_width=0.2, head_length=0.1, fc='black', ec='black', linewidth=3)
+    # Define IBM colors for sentiment regions
+    neg_color = IBM_COLORS['red_20']  # Light red for negative region
+    neu_color = IBM_COLORS['gray_10']  # Light gray for neutral region
+    pos_color = IBM_COLORS['green_20']  # Light green for positive region
 
-    # Add score value text
-    ax.text(clamped_score, -0.8, f"{clamped_score:.2f}", ha='center', fontsize=18, fontweight='bold')
+    # Define IBM accent colors for the indicator and text
+    indicator_color = IBM_COLORS['blue']  # IBM blue for the indicator
+    neg_text_color = IBM_COLORS['red']  # IBM red for negative text
+    neu_text_color = IBM_COLORS['gray_80']  # IBM dark gray for neutral text
+    pos_text_color = IBM_COLORS['green']  # IBM green for positive text
 
-    # Determine sentiment description based on score
+    # Draw the gauge background - more refined and IBM-styled
+    gauge_y = 0
+    gauge_height = 0.3
+
+    # Create gradient regions with clean IBM styling
+    # Negative region (-1 to -0.1)
+    ax.add_patch(plt.Rectangle((-1, gauge_y - gauge_height / 2), 0.9, gauge_height,
+                               color=neg_color, alpha=0.8, ec=IBM_COLORS['gray_20'], lw=0.5))
+
+    # Neutral region (-0.1 to 0.1)
+    ax.add_patch(plt.Rectangle((-0.1, gauge_y - gauge_height / 2), 0.2, gauge_height,
+                               color=neu_color, alpha=0.8, ec=IBM_COLORS['gray_20'], lw=0.5))
+
+    # Positive region (0.1 to 1)
+    ax.add_patch(plt.Rectangle((0.1, gauge_y - gauge_height / 2), 0.9, gauge_height,
+                               color=pos_color, alpha=0.8, ec=IBM_COLORS['gray_20'], lw=0.5))
+
+    # Add elegant tick marks with IBM styling
+    tick_height = 0.05
+    for x_pos in [-1, -0.5, 0, 0.5, 1]:
+        # Draw tick mark
+        ax.plot([x_pos, x_pos], [gauge_y - gauge_height / 2 - tick_height, gauge_y - gauge_height / 2],
+                color=IBM_COLORS['gray_60'], lw=1)
+        # Add value label
+        ax.text(x_pos, gauge_y - gauge_height / 2 - tick_height - 0.1, f"{x_pos:.1f}",
+                ha='center', fontsize=10, color=IBM_COLORS['gray_60'])
+
+    # Create a more elegant indicator (inspired by IBM's design language)
+    # Instead of a basic circle, use a combination of shapes for more visual interest
+
+    # Position the indicator at the score position
+    indicator_x = clamped_score
+    indicator_y = gauge_y
+
+    # Draw a vertical line from the gauge to the indicator
+    ax.plot([indicator_x, indicator_x],
+            [gauge_y - gauge_height / 2, gauge_y + gauge_height / 2 + 0.1],
+            color=indicator_color, lw=2, zorder=10)
+
+    # Draw an IBM-styled indicator (diamond with circle)
+    diamond_size = 0.08
+    diamond = plt.Polygon([
+        (indicator_x, indicator_y + gauge_height / 2 + 0.1 + diamond_size),
+        (indicator_x + diamond_size, indicator_y + gauge_height / 2 + 0.1),
+        (indicator_x, indicator_y + gauge_height / 2 + 0.1 - diamond_size),
+        (indicator_x - diamond_size, indicator_y + gauge_height / 2 + 0.1)
+    ], color=indicator_color, zorder=11)
+    ax.add_patch(diamond)
+
+    # Add a small circle at the center of the diamond for additional refinement
+    circle = plt.Circle((indicator_x, indicator_y + gauge_height / 2 + 0.1),
+                        diamond_size / 2.5, color=IBM_COLORS['white'], zorder=12)
+    ax.add_patch(circle)
+
+    # Add score value with IBM styling - make it more prominent
+    ax.text(indicator_x, indicator_y + gauge_height / 2 + 0.3, f"{clamped_score:.2f}",
+            ha='center', fontsize=18, fontweight='bold', color=indicator_color, zorder=10)
+
+    # Add region labels with IBM styling
+    ax.text(-0.7, gauge_y, "Negative", ha='center', va='center', fontsize=14,
+            color=neg_text_color, fontweight='medium')
+    ax.text(0, gauge_y, "Neutral", ha='center', va='center', fontsize=14,
+            color=neu_text_color, fontweight='medium')
+    ax.text(0.7, gauge_y, "Positive", ha='center', va='center', fontsize=14,
+            color=pos_text_color, fontweight='medium')
+
+    # Determine sentiment description based on score - with IBM terminology
     if clamped_score <= -0.8:
-        sentiment_text = "Extremely negative"
+        sentiment_text = "Highly negative"
+        sentiment_color = neg_text_color
     elif clamped_score <= -0.3:
-        sentiment_text = "More negative"
+        sentiment_text = "Somewhat negative"
+        sentiment_color = neg_text_color
     elif clamped_score < -0.1:
         sentiment_text = "Slightly negative"
+        sentiment_color = neg_text_color
     elif clamped_score <= 0.1:
         sentiment_text = "Neutral"
+        sentiment_color = neu_text_color
     elif clamped_score < 0.3:
         sentiment_text = "Slightly positive"
+        sentiment_color = pos_text_color
     elif clamped_score < 0.8:
-        sentiment_text = "More positive"
+        sentiment_text = "Somewhat positive"
+        sentiment_color = pos_text_color
     else:
-        sentiment_text = "Extremely positive"
+        sentiment_text = "Highly positive"
+        sentiment_color = pos_text_color
 
-    # Add overall sentiment text
-    ax.text(0, 1.0, f"Overall sentiment: {sentiment_text}", ha='center', fontsize=20, fontweight='bold')
+    # Add overall sentiment text with IBM styling - make it more prominent
+    ax.text(0, 0.8, f"Overall sentiment: {sentiment_text}", ha='center',
+            fontsize=16, fontweight='bold', color=sentiment_color)
 
     # Set limits
-    ax.set_xlim(-1.75, 1.75)
-    ax.set_ylim(-1.5, 1.5)
+    ax.set_xlim(-1.2, 1.2)
+    ax.set_ylim(-0.5, 1.0)
 
-    # Set title
-    ax.set_title("Sentiment analysis results", fontsize=20, pad=20)
+    # Add title with IBM styling
+    ax.set_title("Sentiment Analysis", fontsize=18, fontweight='bold',
+                 color=IBM_COLORS['black'], pad=20)
+
+    # Add subtle IBM branding
+    fig.text(0.01, 0.01, "PDF Analysis AI", fontsize=8, color=IBM_COLORS['gray'])
 
     return fig, ax
 
 # ---------------------------
-# 3. Routing: uploading and parsing PDFs
+# 7. Routing: uploading and parsing PDFs
 # ---------------------------
 
 @app.post("/upload_pdf")
@@ -1198,7 +1438,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 
 # ---------------------------
-# 4. Routing: generating textual reports
+# 8. Routing: generating textual reports with IBM styling
 # ---------------------------
 
 @app.post("/generate_report")
@@ -1220,7 +1460,7 @@ async def generate_report(request: AnalysisRequest):
         retrieved_docs = vectorstore.similarity_search(prompt_template, k=5)
         retrieved_context = "\n\n".join([doc.page_content for doc in retrieved_docs])
 
-        # 增强最终提示，添加更明确的格式指导
+        # Enhanced final prompt with clear formatting guidelines
         final_prompt = (
             f"Below is a summary of the contents of the document:\n\n{retrieved_context}\n\n"
             f"Please analyse based on the above and output the results strictly according to the following requirements:\n\n{prompt_template}\n\n"
@@ -1232,11 +1472,11 @@ async def generate_report(request: AnalysisRequest):
             f"5. Analyses should be succinct, with no more than 50 words per point"
         )
 
-        # 增加温度参数，减少随机性，提高格式一致性
+        # Lowered temperature for more consistent formatting
         response = ollama.chat(
-            model="granite3.2:8b",
+            model="granite3.2",
             messages=[{"role": "user", "content": final_prompt}],
-            options={"temperature": 0.2}  # 使用低温度以提高格式一致性
+            options={"temperature": 0.2}
         )
 
         if "message" not in response:
@@ -1244,9 +1484,9 @@ async def generate_report(request: AnalysisRequest):
 
         analysis_text = response["message"]["content"].strip()
 
-        # 辅助函数：检查分析结果是否符合预期格式
+        # Helper function: check if analysis meets expected format
         def check_format(analysis_type, text):
-            """检查分析结果是否符合预期格式"""
+            """Check if analysis result meets expected format"""
             if analysis_type == "SWOT":
                 return all(x in text for x in ["## Strengths", "## Weaknesses", "## Opportunities", "## Threats"])
             elif analysis_type == "PESTLE":
@@ -1257,21 +1497,22 @@ async def generate_report(request: AnalysisRequest):
                 return all(x in text for x in ["## Mission", "## Objectives", "## Strategies", "## Tactics"])
             elif analysis_type == "Sentiment":
                 return all(x in text for x in
-                           ["## Overall sentimental tendencies", "## Positive", "## Neutral", "## Negative", "## Key Emotional Expressions"])
+                           ["## Overall sentimental tendencies", "## Positive", "## Neutral", "## Negative",
+                            "## Key Emotional Expressions"])
             return False
 
-        # 辅助函数：检查每个部分是否至少有一个带短横线的列表项
+        # Helper function: check if each section has at least one bullet point
         def check_bullet_points(text):
-            sections = text.split("##")[1:]  # 跳过第一个可能为空的部分
+            sections = text.split("##")[1:]  # Skip first potentially empty part
             for section in sections:
                 if section.strip() and "- " not in section:
                     return False
             return True
 
-        # 辅助函数：生成针对特定分析类型的重试提示
+        # Helper function: generate retry prompt for specific analysis type
         def generate_retry_prompt(analysis_type, text):
-            # 首先创建一个通用的重试前缀
-            retry_prefix = "Your response did not follow the required format exactly.Please re-export strictly in the following format, keeping all the bullet points but correcting the formatting issues:\n\n"
+            # Create a general retry prefix
+            retry_prefix = "Your response did not follow the required format exactly. Please re-export strictly in the following format, keeping all the bullet points but correcting the formatting issues:\n\n"
 
             if analysis_type == "SWOT":
                 missing_sections = []
@@ -1281,7 +1522,7 @@ async def generate_report(request: AnalysisRequest):
 
                 retry_prompt = retry_prefix
                 if missing_sections:
-                    retry_prompt += f"缺少以下部分: {', '.join(missing_sections)}\n\n"
+                    retry_prompt += f"Missing sections: {', '.join(missing_sections)}\n\n"
 
                 retry_prompt += (
                     "A complete SWOT analysis must contain the following four sections, with at least three bullet points in each section:\n\n"
@@ -1338,7 +1579,7 @@ async def generate_report(request: AnalysisRequest):
                     "## Tactics\n- [Tactic 1]\n- [Tactic 2]\n- [Tactic 3]\n- [Tactic 4]\n\n"
                     "Make sure:\n"
                     "1. Use a dash '-' before all points\n"
-                    "2.The mission section should identify the 'core purpose' and 'long-term vision' of the organization. Summarize it in a 'clear and concise' statement"
+                    "2. The mission section should identify the 'core purpose' and 'long-term vision' of the organization. Summarize it in a 'clear and concise' statement\n"
                     "3. Each section has at least the minimum number of points shown above\n"
                     "4. Keep the exact title format (including ### and spaces) as described above\n"
                     "5. Retain the content points you analysed earlier and only adjust the formatting"
@@ -1346,7 +1587,8 @@ async def generate_report(request: AnalysisRequest):
 
             elif analysis_type == "Sentiment":
                 missing_sections = []
-                for section in ["## Overall sentimental tendencies", "## Positive", "## Neutral", "## Negative", "## Key Emotional Expressions"]:
+                for section in ["## Overall sentimental tendencies", "## Positive", "## Neutral", "## Negative",
+                                "## Key Emotional Expressions"]:
                     if section not in text:
                         missing_sections.append(section)
 
@@ -1374,18 +1616,17 @@ async def generate_report(request: AnalysisRequest):
 
             return retry_prompt
 
-        # 辅助函数：尝试从格式错误的文本中提取内容并重新组织
+        # Helper function: try to extract content from incorrectly formatted text and restructure
         def attempt_restructure(analysis_type, text):
-            """尝试从格式错误的文本中提取内容并重组为正确格式"""
-
+            """Try to extract content from incorrectly formatted text and reorganize into correct format"""
             if analysis_type == "SWOT":
-                # 识别可能的SWOT部分
+                # Identify possible SWOT sections
                 strengths = []
                 weaknesses = []
                 opportunities = []
                 threats = []
 
-                # 提取各部分内容
+                # Extract content for each section
                 lines = text.split('\n')
                 current_section = None
 
@@ -1396,7 +1637,7 @@ async def generate_report(request: AnalysisRequest):
 
                     lower_line = line.lower()
 
-                    # 识别部分
+                    # Identify section
                     if "strength" in lower_line or "优势" in lower_line:
                         current_section = "strengths"
                         continue
@@ -1410,7 +1651,7 @@ async def generate_report(request: AnalysisRequest):
                         current_section = "threats"
                         continue
 
-                    # 收集要点
+                    # Collect points
                     if current_section and (line.startswith('-') or line.startswith('•') or line.startswith('*')):
                         line = "- " + line[1:].strip()
                         if current_section == "strengths":
@@ -1422,7 +1663,7 @@ async def generate_report(request: AnalysisRequest):
                         elif current_section == "threats":
                             threats.append(line)
 
-                # 确保每个部分至少有一个要点
+                # Ensure each section has at least one point
                 if not strengths:
                     strengths = ["- Failure to identify clear strengths"]
                 if not weaknesses:
@@ -1432,7 +1673,7 @@ async def generate_report(request: AnalysisRequest):
                 if not threats:
                     threats = ["- Failure to identify clear threats"]
 
-                # 重组为正确格式
+                # Restructure into correct format
                 restructured = (
                         "## Strengths\n" + "\n".join(strengths) + "\n\n" +
                         "## Weaknesses\n" + "\n".join(weaknesses) + "\n\n" +
@@ -1442,78 +1683,8 @@ async def generate_report(request: AnalysisRequest):
 
                 return restructured
 
-            elif analysis_type == "MOST":
-                # 识别可能的MOST部分
-                mission = []
-                objectives = []
-                strategies = []
-                tactics = []
-
-                # 提取各部分内容
-                lines = text.split('\n')
-                current_section = None
-
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    lower_line = line.lower()
-
-                    # 识别部分
-                    if "mission" in lower_line or "使命" in lower_line or "任务" in lower_line:
-                        current_section = "mission"
-                        continue
-                    elif "objective" in lower_line or "目标" in lower_line:
-                        current_section = "objectives"
-                        continue
-                    elif "strateg" in lower_line or "策略" in lower_line:
-                        current_section = "strategies"
-                        continue
-                    elif "tactic" in lower_line or "战术" in lower_line or "行动" in lower_line:
-                        current_section = "tactics"
-                        continue
-
-                    # 收集要点
-                    if current_section and (line.startswith('-') or line.startswith('•') or line.startswith('*') or
-                                            line[0].isdigit() and line[1] in ['.', ')']):
-                        # 统一格式为短横线
-                        if line[0].isdigit() and line[1] in ['.', ')']:
-                            line = "- " + line[2:].strip()
-                        else:
-                            line = "- " + line[1:].strip()
-
-                        if current_section == "mission":
-                            mission.append(line)
-                        elif current_section == "objectives":
-                            objectives.append(line)
-                        elif current_section == "strategies":
-                            strategies.append(line)
-                        elif current_section == "tactics":
-                            tactics.append(line)
-
-                # 确保每个部分至少有一个要点
-                if not mission:
-                    mission = ["- Failure to identify a clear mission"]
-                if not objectives:
-                    objectives = ["- Failure to identify clear objectives", "- Need for further clarification of objectives"]
-                if not strategies:
-                    strategies = ["- Failed to identify a clear strategy", "- Further strategy development required"]
-                if not tactics:
-                    tactics = ["- Failure to identify clear tactics", "- Need to further develop specific operational measures"]
-
-                # 重组为正确格式
-                restructured = (
-                        "## Mission\n" + "\n".join(mission) + "\n\n" +
-                        "## Objectives\n" + "\n".join(objectives) + "\n\n" +
-                        "## Strategies\n" + "\n".join(strategies) + "\n\n" +
-                        "## Tactics\n" + "\n".join(tactics)
-                )
-
-                return restructured
-
             elif analysis_type == "PESTLE":
-                # 识别可能的PESTLE部分
+                # Identify possible PESTLE sections
                 political = []
                 economic = []
                 social = []
@@ -1521,7 +1692,7 @@ async def generate_report(request: AnalysisRequest):
                 legal = []
                 environmental = []
 
-                # 提取各部分内容
+                # Extract content for each section
                 lines = text.split('\n')
                 current_section = None
 
@@ -1532,27 +1703,27 @@ async def generate_report(request: AnalysisRequest):
 
                     lower_line = line.lower()
 
-                    # 识别部分
-                    if "politic" in lower_line or "政治" in lower_line:
+                    # Identify section
+                    if any(x in lower_line for x in ["politic", "政治"]):
                         current_section = "political"
                         continue
-                    elif "econom" in lower_line or "经济" in lower_line:
+                    elif any(x in lower_line for x in ["econom", "经济"]):
                         current_section = "economic"
                         continue
-                    elif "social" in lower_line or "社会" in lower_line:
+                    elif any(x in lower_line for x in ["social", "社会"]):
                         current_section = "social"
                         continue
-                    elif "tech" in lower_line or "技术" in lower_line:
+                    elif any(x in lower_line for x in ["tech", "技术"]):
                         current_section = "technological"
                         continue
-                    elif "legal" in lower_line or "法律" in lower_line:
+                    elif any(x in lower_line for x in ["legal", "法律"]):
                         current_section = "legal"
                         continue
-                    elif "environ" in lower_line or "环境" in lower_line:
+                    elif any(x in lower_line for x in ["environ", "环境"]):
                         current_section = "environmental"
                         continue
 
-                    # 收集要点
+                    # Collect points
                     if current_section and (line.startswith('-') or line.startswith('•') or line.startswith('*')):
                         line = "- " + line[1:].strip()
                         if current_section == "political":
@@ -1568,21 +1739,21 @@ async def generate_report(request: AnalysisRequest):
                         elif current_section == "environmental":
                             environmental.append(line)
 
-                # 确保每个部分至少有一个要点
+                # Ensure each section has at least one point
                 if not political:
-                    political = ["- Failure to identify clear political factors"]
+                    political = ["- No clear political factors identified"]
                 if not economic:
-                    economic = ["- Failure to identify clear economic factors"]
+                    economic = ["- No clear economic factors identified"]
                 if not social:
-                    social = ["- Failure to identify clear social factors"]
+                    social = ["- No clear social factors identified"]
                 if not technological:
-                    technological = ["- Failure to identify clear technological factors"]
+                    technological = ["- No clear technological factors identified"]
                 if not legal:
-                    legal = ["- Failure to identify clear legal factors"]
+                    legal = ["- No clear legal factors identified"]
                 if not environmental:
-                    environmental = ["- Failure to identify clear environmental factors"]
+                    environmental = ["- No clear environmental factors identified"]
 
-                # 重组为正确格式
+                # Restructure into correct format
                 restructured = (
                         "## Political\n" + "\n".join(political) + "\n\n" +
                         "## Economic\n" + "\n".join(economic) + "\n\n" +
@@ -1594,15 +1765,14 @@ async def generate_report(request: AnalysisRequest):
 
                 return restructured
 
-            elif analysis_type == "Sentiment":
-                # 识别可能的情感分析部分
-                overall = []
-                positive = []
-                neutral = []
-                negative = []
-                key_statements = []
+            elif analysis_type == "MOST":
+                # Identify possible MOST sections
+                mission = []
+                objectives = []
+                strategies = []
+                tactics = []
 
-                # 提取各部分内容
+                # Extract content for each section
                 lines = text.split('\n')
                 current_section = None
 
@@ -1613,108 +1783,197 @@ async def generate_report(request: AnalysisRequest):
 
                     lower_line = line.lower()
 
-                    # 识别部分
-                    if "总体" in lower_line or "overall" in lower_line:
-                        current_section = "overall"
+                    # Identify section
+                    if any(x in lower_line for x in ["mission", "使命", "任务"]):
+                        current_section = "mission"
                         continue
-                    elif "正面" in lower_line or "积极" in lower_line or "positive" in lower_line:
-                        current_section = "positive"
+                    elif any(x in lower_line for x in ["objective", "目标"]):
+                        current_section = "objectives"
                         continue
-                    elif "中性" in lower_line or "neutral" in lower_line:
-                        current_section = "neutral"
+                    elif any(x in lower_line for x in ["strateg", "策略"]):
+                        current_section = "strategies"
                         continue
-                    elif "负面" in lower_line or "消极" in lower_line or "negative" in lower_line:
-                        current_section = "negative"
-                        continue
-                    elif "关键" in lower_line or "表述" in lower_line or "key" in lower_line:
-                        current_section = "key_statements"
+                    elif any(x in lower_line for x in ["tactic", "战术", "行动"]):
+                        current_section = "tactics"
                         continue
 
-                    # 收集要点
-                    if current_section == "overall" and (
-                            line.startswith('-') or line.startswith('•') or line.startswith('*')):
+                    # Collect points
+                    if current_section and (line.startswith('-') or line.startswith('•') or line.startswith('*')):
                         line = "- " + line[1:].strip()
-                        overall.append(line)
-                    elif current_section == "positive" and (
-                            line.startswith('-') or line.startswith('•') or line.startswith('*')):
-                        line = "- " + line[1:].strip()
-                        positive.append(line)
-                    elif current_section == "neutral" and (
-                            line.startswith('-') or line.startswith('•') or line.startswith('*')):
-                        line = "- " + line[1:].strip()
-                        neutral.append(line)
-                    elif current_section == "negative" and (
-                            line.startswith('-') or line.startswith('•') or line.startswith('*')):
-                        line = "- " + line[1:].strip()
-                        negative.append(line)
-                    elif current_section == "key_statements":
-                        # 对于关键表述，检查是否有引号和编号
-                        if '"' in line or '"' in line or "'" in line:
-                            # 提取引号内的内容
-                            start = max(line.find('"'), line.find('"'), line.find("'"))
-                            end = max(line.rfind('"'), line.rfind('"'), line.rfind("'"))
-                            if start != -1 and end != -1 and start < end:
-                                quote = line[start:end + 1]
-                                # 格式化为数字加引号
-                                key_statements.append(f"{len(key_statements) + 1}. {quote}")
-                        elif line.strip() and not line[0].isdigit():
-                            # 如果没有引号但有内容，加上引号
-                            key_statements.append(f'{len(key_statements) + 1}. "{line.strip()}"')
+                        if current_section == "mission":
+                            mission.append(line)
+                        elif current_section == "objectives":
+                            objectives.append(line)
+                        elif current_section == "strategies":
+                            strategies.append(line)
+                        elif current_section == "tactics":
+                            tactics.append(line)
 
-                # 确保每个部分至少有基本内容
-                if not overall:
-                    overall = ["- Sentimental score: 0", "- Overall rating: the text is emotionally neutral"]
-                elif not any("score" in item for item in overall):
-                    # 如果没有评分项，添加一个默认评分
-                    overall.insert(0, "- Sentimental score: 0")
+                # Ensure each section has at least one point
+                if not mission:
+                    mission = ["- No clear mission statement identified"]
+                if not objectives:
+                    objectives = ["- No clear objectives identified"]
+                if not strategies:
+                    strategies = ["- No clear strategies identified"]
+                if not tactics:
+                    tactics = ["- No clear tactics identified"]
 
-                if not positive:
-                    positive = ["- No clear positive emotions were identified"]
-                if not neutral:
-                    neutral = ["- The overall emotional expression of the text is neutral"]
-                if not negative:
-                    negative = ["- No significant negative feelings identified"]
-                if not key_statements:
-                    key_statements = ['1. "Failure to extract a clear expression of emotion"']
-
-                # 重组为正确格式
+                # Restructure into correct format
                 restructured = (
-                        "## Overall sentimental tendencies\n" + "\n".join(overall) + "\n\n" +
-                        "## Positive\n" + "\n".join(positive) + "\n\n" +
-                        "## Neutral\n" + "\n".join(neutral) + "\n\n" +
-                        "## Negative\n" + "\n".join(negative) + "\n\n" +
-                        "## Key Emotional Expressions\n" + "\n".join(key_statements)
+                        "## Mission\n" + "\n".join(mission) + "\n\n" +
+                        "## Objectives\n" + "\n".join(objectives) + "\n\n" +
+                        "## Strategies\n" + "\n".join(strategies) + "\n\n" +
+                        "## Tactics\n" + "\n".join(tactics)
                 )
 
                 return restructured
 
-            # 如果无法修复，返回原文本
+            elif analysis_type == "Sentiment":
+                # Identify possible Sentiment sections
+                overall = []
+                positive = []
+                neutral = []
+                negative = []
+                expressions = []
+
+                # Extract sentiment score
+                sentiment_score = 0
+                score_pattern = r'-?\d+\.?\d*'
+                score_matches = re.findall(score_pattern, text)
+                if score_matches:
+                    try:
+                        potential_scores = [float(s) for s in score_matches if -1 <= float(s) <= 1]
+                        if potential_scores:
+                            sentiment_score = potential_scores[0]
+                    except:
+                        pass
+
+                # Extract content for each section
+                lines = text.split('\n')
+                current_section = None
+
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    lower_line = line.lower()
+
+                    # Identify section
+                    if "overall" in lower_line or "tendency" in lower_line or "tendencies" in lower_line:
+                        current_section = "overall"
+                        continue
+                    elif "positive" in lower_line:
+                        current_section = "positive"
+                        continue
+                    elif "neutral" in lower_line:
+                        current_section = "neutral"
+                        continue
+                    elif "negative" in lower_line:
+                        current_section = "negative"
+                        continue
+                    elif "key" in lower_line and ("expression" in lower_line or "emotion" in lower_line):
+                        current_section = "expressions"
+                        continue
+
+                    # Collect points
+                    if current_section and (line.startswith('-') or line.startswith('•') or line.startswith('*')):
+                        line = "- " + line[1:].strip()
+                        if current_section == "overall":
+                            overall.append(line)
+                        elif current_section == "positive":
+                            positive.append(line)
+                        elif current_section == "neutral":
+                            neutral.append(line)
+                        elif current_section == "negative":
+                            negative.append(line)
+                    elif current_section == "expressions" and (
+                            line.startswith('"') or line.startswith('"') or line.startswith("'")):
+                        expressions.append(line)
+                    elif current_section == "expressions" and (line[0].isdigit() and line[1] in ('.', ')', ' ')):
+                        expressions.append(line)
+
+                # Ensure sentiment score is included in overall section
+                if not any("score" in item.lower() for item in overall):
+                    overall.insert(0, f"- Sentiment Score: {sentiment_score}")
+
+                if not any("rating" in item.lower() for item in overall):
+                    if sentiment_score > 0.3:
+                        overall.append("- Overall Rating: The text shows generally positive sentiment.")
+                    elif sentiment_score < -0.3:
+                        overall.append("- Overall Rating: The text shows generally negative sentiment.")
+                    else:
+                        overall.append("- Overall Rating: The text shows generally neutral sentiment.")
+
+                # Ensure each section has at least two points
+                if len(positive) < 2:
+                    positive.append("- Positive elements not clearly identified")
+                if len(neutral) < 2:
+                    neutral.append("- Neutral elements not clearly identified")
+                if len(negative) < 2:
+                    negative.append("- Negative elements not clearly identified")
+
+                # Format expressions as numbered list
+                formatted_expressions = []
+                for i, expr in enumerate(expressions, 1):
+                    if expr.startswith('"') or expr.startswith('"') or expr.startswith("'"):
+                        formatted_expressions.append(f"{i}. {expr}")
+                    else:
+                        # Extract the quote part
+                        match = re.search(r'[""](.+?)[""]', expr)
+                        if match:
+                            formatted_expressions.append(f"{i}. \"{match.group(1)}\"")
+                        else:
+                            # Just convert to numbered format if no quotes found
+                            text_part = expr[2:].strip() if expr.startswith('-') else expr
+                            formatted_expressions.append(f"{i}. \"{text_part}\"")
+
+                # Add default expressions if none found
+                if not formatted_expressions:
+                    formatted_expressions = [
+                        '1. "No key emotional expressions identified"',
+                        '2. "Analysis could not extract specific quoted content"'
+                    ]
+
+                # Restructure into correct format
+                restructured = (
+                        "## Overall sentimental tendencies\n" + "\n".join(overall) + "\n\n" +
+                        "## Positive emotion\n" + "\n".join(positive) + "\n\n" +
+                        "## Neutral emotion\n" + "\n".join(neutral) + "\n\n" +
+                        "## Negative emotion\n" + "\n".join(negative) + "\n\n" +
+                        "## Key Emotional Expressions\n" + "\n".join(formatted_expressions)
+                )
+
+                return restructured
+
+            # If none of the structured types match or restructuring fails, return the original text
             return text
 
-        # 最多重试3次，确保获得正确格式
+        # Maximum retry attempts
         max_retries = 3
         current_retry = 0
 
         while current_retry < max_retries:
-            # 检查格式是否正确
+            # Check format correctness
             format_correct = check_format(analysis_type, analysis_text)
             bullet_points_correct = check_bullet_points(analysis_text)
 
             if format_correct and bullet_points_correct:
-                break  # 格式正确，不需要重试
+                break  # Format is correct, no need to retry
 
-            # 生成重试提示
+            # Generate retry prompt
             retry_prompt = generate_retry_prompt(analysis_type, analysis_text)
 
-            # 记录重试次数和原因
+            # Log retry info
             print(
-                f"Retry #{current_retry + 1}：{'Formatting error' if not format_correct else ''} {'Missing list items' if not bullet_points_correct else ''}")
+                f"Retry #{current_retry + 1}: {'Formatting error' if not format_correct else ''} {'Missing list items' if not bullet_points_correct else ''}")
 
-            # 降低温度，尝试再次生成
-            retry_temperature = max(0.1, 0.3 - current_retry * 0.1)  # 逐次降低温度
+            # Lower temperature with each retry
+            retry_temperature = max(0.1, 0.3 - current_retry * 0.1)
 
             retry_response = ollama.chat(
-                model="granite3.2:8b",
+                model="granite3.2",
                 messages=[
                     {"role": "user", "content": final_prompt},
                     {"role": "assistant", "content": analysis_text},
@@ -1726,101 +1985,111 @@ async def generate_report(request: AnalysisRequest):
             if "message" in retry_response:
                 new_text = retry_response["message"]["content"].strip()
 
-                # 检查新文本是否比原文本更符合格式要求
+                # Check if new text has better format
                 new_format_correct = check_format(analysis_type, new_text)
                 new_bullet_points_correct = check_bullet_points(new_text)
 
-                # 只有当新文本格式更好时才替换
+                # Only replace if new text has better format
                 if (new_format_correct and not format_correct) or (
                         new_format_correct == format_correct and new_bullet_points_correct and not bullet_points_correct):
                     analysis_text = new_text
                 elif not new_format_correct and not format_correct:
-                    # 尝试从原始回答中提取内容并重组
+                    # Try to restructure original text
                     restructured_text = attempt_restructure(analysis_type, analysis_text)
                     if check_format(analysis_type, restructured_text):
                         analysis_text = restructured_text
 
             current_retry += 1
 
-        # 如果所有重试都失败，尝试最后的紧急修复
+        # Final emergency fix attempt
         if not check_format(analysis_type, analysis_text):
             emergency_text = attempt_restructure(analysis_type, analysis_text)
             if check_format(analysis_type, emergency_text):
                 analysis_text = emergency_text
 
-        # 生成PDF报告
+        # Generate PDF report with IBM styling
         pdf_buffer = io.BytesIO()
-        pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
-        pdf.setTitle(f"{analysis_type} analysis")
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
 
-        margin = 50
-        line_height = 15
-        font_size = 12
-        page_width, page_height = letter
+        # Create IBM-styled paragraph styles
+        ibm_title_style = ParagraphStyle(
+            'IBMTitle',
+            parent=styles['Title'],
+            fontName='Helvetica-Bold',
+            fontSize=16,
+            textColor=colors.HexColor(IBM_COLORS['black']),
+            spaceAfter=12,
+            spaceBefore=12,
+            alignment=TA_CENTER
+        )
 
-        pdf.setFont("Helvetica-Bold", 16)
-        title = f"{analysis_type} Analysis Report"
-        title_width = pdf.stringWidth(title, "Helvetica-Bold", 16)
-        pdf.drawString((page_width - title_width) / 2, page_height - margin - 20, title)
+        ibm_heading_style = ParagraphStyle(
+            'IBMHeading',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            textColor=colors.HexColor(IBM_COLORS['blue']),
+            spaceAfter=8,
+            spaceBefore=16
+        )
 
-        y_position = page_height - margin - 50
-        pdf.setFont("Helvetica", font_size)
-        text_object = pdf.beginText(margin, y_position)
-        text_object.setLeading(line_height)
-        max_line_width = page_width - 2 * margin
+        ibm_bullet_style = ParagraphStyle(
+            'IBMBullet',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=colors.HexColor(IBM_COLORS['black']),
+            leftIndent=20,
+            firstLineIndent=-15,
+            spaceBefore=2,
+            spaceAfter=5
+        )
 
-        # 改进PDF生成，增加标题和项目符号的差异化显示
+        # Prepare story elements
+        elements = []
+
+        # Add title
+        title = Paragraph(f"{analysis_type} Analysis Report", ibm_title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 12))
+
+        # Process analysis text into well-formatted paragraphs
         lines = analysis_text.split("\n")
-        for paragraph in lines:
-            # 识别标题行
-            if paragraph.startswith('##'):
-                # 如果是标题，先换行，再用粗体显示
-                text_object.textLine('')
-                pdf.drawText(text_object)
+        current_section = None
 
-                # 重置文本对象为粗体
-                text_object = pdf.beginText(margin, text_object.getY() - line_height)
-                text_object.setFont("Helvetica-Bold", font_size + 2)
-                text_object.textLine(paragraph.strip())
-                pdf.drawText(text_object)
-
-                # 重置文本对象为常规字体
-                text_object = pdf.beginText(margin, text_object.getY() - line_height)
-                text_object.setFont("Helvetica", font_size)
-                text_object.setLeading(line_height)
+        for line in lines:
+            line = line.strip()
+            if not line:
                 continue
 
-            # 识别项目符号行
-            elif paragraph.strip().startswith('-'):
-                indented_paragraph = '  ' + paragraph  # 添加缩进
-                w_list = indented_paragraph.split()
-            else:
-                w_list = paragraph.split()
-
-            if not w_list:
-                text_object.textLine('')
-                continue
-
-            line_acc = []
-            for w in w_list:
-                if pdf.stringWidth(' '.join(line_acc + [w]), "Helvetica", font_size) < max_line_width:
-                    line_acc.append(w)
+            if line.startswith("## "):
+                # Section heading
+                current_section = line[3:].strip()
+                heading = Paragraph(current_section, ibm_heading_style)
+                elements.append(heading)
+            elif line.startswith("- ") or line.startswith("• "):
+                # Convert to IBM bullet style
+                bullet_text = line[2:].strip()
+                bullet = Paragraph(f"• {bullet_text}", ibm_bullet_style)
+                elements.append(bullet)
+            elif line[0].isdigit() and line[1:3] in [". ", ") "]:
+                # Numbered item, convert to IBM style
+                numbered_text = line[3:].strip()
+                if "\"" in numbered_text:
+                    # Keep original numbering for quoted content
+                    numbered = Paragraph(f"{line[0]}. {numbered_text}", ibm_bullet_style)
                 else:
-                    text_object.textLine(' '.join(line_acc))
-                    line_acc = [w]
-                    if text_object.getY() - line_height < margin:
-                        pdf.drawText(text_object)
-                        pdf.showPage()
-                        pdf.setFont("Helvetica", font_size)
-                        y_position = page_height - margin
-                        text_object = pdf.beginText(margin, y_position)
-                        text_object.setLeading(line_height)
+                    # Convert numbers to bullets for consistency
+                    numbered = Paragraph(f"• {numbered_text}", ibm_bullet_style)
+                elements.append(numbered)
+            else:
+                # Normal text paragraph
+                normal = Paragraph(line, styles['Normal'])
+                elements.append(normal)
 
-            if line_acc:
-                text_object.textLine(' '.join(line_acc))
-
-        pdf.drawText(text_object)
-        pdf.save()
+        # Build PDF document
+        doc.build(elements)
         pdf_buffer.seek(0)
 
         return JSONResponse(
@@ -1833,10 +2102,8 @@ async def generate_report(request: AnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
 # ---------------------------
-# 5. Routing: generating word clouds
+# 9. Routing: generating word clouds
 # ---------------------------
 
 @app.post("/generate_wordcloud")
@@ -1846,60 +2113,105 @@ async def generate_wordcloud_api(request: AnalysisRequest):
         if not text:
             raise HTTPException(status_code=400, detail="Text content is empty, can't generate word cloud map")
 
-        wc_buffer = generate_wordcloud_image(text)
+        # Create a fallback wordcloud in case of errors
+        def create_fallback_wordcloud():
+            """Create a simple fallback wordcloud with error message"""
+            plt = set_ibm_matplotlib_style()
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor=IBM_COLORS['white'])
+            ax.text(0.5, 0.5, "Unable to generate word cloud from this text.",
+                    ha='center', va='center', fontsize=14, color=IBM_COLORS['red'])
+            ax.text(0.5, 0.4, "The text may be too short or contain unsupported content.",
+                    ha='center', va='center', fontsize=12, color=IBM_COLORS['gray_80'])
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_title("Word Cloud Error", fontsize=16, fontweight='bold', color=IBM_COLORS['black'])
+            ax.axis('off')
+
+            buf = io.BytesIO()
+            plt.savefig(buf, format="png", dpi=200, bbox_inches='tight')
+            buf.seek(0)
+            plt.close(fig)
+            return buf
+
+        try:
+            wc_buffer = generate_wordcloud_image(text)
+        except Exception as wc_error:
+            # Log error and create fallback
+            print(f"WordCloud generation error: {str(wc_error)}")
+            import traceback
+            print(traceback.format_exc())
+            wc_buffer = create_fallback_wordcloud()
+
         wordcloud_base64 = base64.b64encode(wc_buffer.getvalue()).decode("utf-8")
         return JSONResponse(content={"wordcloud": wordcloud_base64})
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Main error handler
+        import traceback
+        print(f"WordCloud endpoint error: {str(e)}")
+        print(traceback.format_exc())
+
+        # Return an error image instead of failing
+        plt = set_ibm_matplotlib_style()
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor=IBM_COLORS['white'])
+        ax.text(0.5, 0.5, f"Error: {str(e)}", ha='center', va='center',
+                fontsize=14, color=IBM_COLORS['red'])
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=200)
+        buf.seek(0)
+        plt.close(fig)
+
+        error_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return JSONResponse(content={"wordcloud": error_base64})
+
 
 # ---------------------------
-# 6. Routing: four-quadrant or histogram visualisation
+# 10. Routing: four-quadrant or histogram visualization
 # ---------------------------
 
 @app.post("/generate_visualization")
 async def generate_visualization(request: VisualizationRequest):
     try:
-        # 松散处理分析类型以避免大小写、空格等问题
+        # Case-insensitive processing of analysis type
         raw_type = request.analysis_type
         analysis_type = raw_type.lower().strip()
         text = request.analysis_text.strip() if request.analysis_text else ""
 
         if not text:
-            raise HTTPException(status_code=400, detail="The analysis text is empty and no visualisation can be generated")
+            raise HTTPException(status_code=400,
+                                detail="The analysis text is empty and no visualization can be generated")
 
         if "swot" in analysis_type:
-            # 使用改进后的解析器函数
+            # Parse SWOT data and generate IBM-styled visualization
             sections = parse_swot_analysis(text)
-            # 使用新函数生成可视化
             fig, ax = generate_swot_visualization(sections)
 
-
         elif "pestle" in analysis_type:
-            # 使用优化的PESTLE分析可视化
+            # Parse PESTLE data and generate IBM-styled visualization
             sections = parse_pestle_analysis(text)
             fig, ax = generate_pestle_visualization(sections)
 
-
         elif "most" in analysis_type:
-            # Parse MOST content
+            # Parse MOST data and generate IBM-styled visualization
             sections = parse_most_analysis(text)
-            # Use our improved MOST visualization function
             fig, ax = generate_most_visualization(sections)
-            # Set appropriate figure size with more space for text
+            # Set appropriate figure size with IBM styling
             fig.set_size_inches(14, 10)
             fig.tight_layout(pad=2.0)
 
-
         elif "sentiment" in analysis_type:
-            # Extract sentiment score from the text analysis
+            # Extract sentiment score and generate IBM-styled visualization
             score = parse_sentiment_analysis(text)
-            # Generate the visualization using the score
             fig, ax = generate_sentiment_visualization(score)
 
         else:
-            raise HTTPException(status_code=400, detail="Types of analyses not supported")
+            raise HTTPException(status_code=400, detail="Analysis type not supported")
 
-        # 输出为图片
+        # Output as image
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         buf.seek(0)
@@ -1908,23 +2220,17 @@ async def generate_visualization(request: VisualizationRequest):
         chart_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
         return JSONResponse(content={"chart": chart_base64})
     except Exception as e:
-        # 提供详细的错误信息以便调试
+        # Provide detailed error for debugging
         import traceback
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
-        print(error_detail)  # 在服务器日志中记录详细错误
-        raise HTTPException(status_code=500, detail=f"Visualisation generation failure: {str(e)}")
+        print(error_detail)  # Log detailed error
+        raise HTTPException(status_code=500, detail=f"Visualization generation failure: {str(e)}")
+
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    # 启动FastAPI应用
+    # Start FastAPI app
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-
-
-
-
 
